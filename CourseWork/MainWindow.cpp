@@ -9,6 +9,7 @@
 #include <QTextStream>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -117,236 +118,294 @@ void MainWindow::showStatusMessage(const QString& message, bool isError)
     ui->statusbar->showMessage(styledMessage);
 }
 
-void MainWindow::loadFromFile(const QString& filePath)
-{
-    std::ifstream file(filePath.toStdString());
-    if (!file.is_open()) {
-        showStatusMessage("Помилка: не вдалося відкрити файл: " + filePath, true);
-        QMessageBox::critical(this, "Помилка", "Не вдалося відкрити файл: " + filePath);
-        return;
+bool MainWindow::isValidFileExtension(const QString& filePath) {
+    QFileInfo fileInfo(filePath);
+    QString extension = fileInfo.suffix().toLower();
+    return (extension == "txt" || extension == "dat" || extension == "csv");
+}
+
+void MainWindow::validateFileForReading(const QString& filePath) {
+    if (!isValidFileExtension(filePath)) {
+        throw std::invalid_argument("Непідтримуваний тип файлу. Дозволені формати: .txt, .dat, .csv");
     }
 
-    cars.clear();
-    Car car;
-    int loadedCount = 0;
-    std::string line;
-
-    // Читаємо файл рядок за рядком
-    while (std::getline(file, line)) {
-        if (line.empty()) continue; // Пропускаємо порожні рядки
-
-        std::stringstream ss(line);
-        if (ss >> car) {
-            cars.append(car);
-            loadedCount++;
-        }
+    QFile file(filePath);
+    if (!file.exists()) {
+        throw std::runtime_error("Файл не існує: " + filePath.toStdString());
     }
-    file.close();
 
-    // Очищаємо фільтр при завантаженні
-    ui->searchText->clear();
-    updateTable();
-
-    if (loadedCount > 0) {
-        showStatusMessage("Успішно завантажено " + QString::number(loadedCount) + " автомобілів з файлу");
-        QMessageBox::information(this, "Успіх",
-                                 "Успішно завантажено " + QString::number(loadedCount) + " автомобілів з файлу.");
-    } else {
-        showStatusMessage("Файл завантажено, але не знайдено жодного запису", true);
-        QMessageBox::warning(this, "Попередження",
-                             "Файл завантажено, але не знайдено жодного запису або формат файлу невірний.\n"
-                             "Переконайтеся, що файл містить дані у форматі: марка,колір,ціна,потужність\n"
-                             "Кожен запис має бути в окремому рядку.");
+    if (file.size() == 0) {
+        throw std::runtime_error("Файл порожній: " + filePath.toStdString());
     }
 }
 
-// Решта методів залишаються без змін...
-void MainWindow::on_addButton_clicked()
-{
-    if (!editDialog) {
-        editDialog = new EditDialog(this);
+void MainWindow::validateFileForWriting(const QString& filePath) {
+    if (!isValidFileExtension(filePath)) {
+        throw std::invalid_argument("Непідтримуваний тип файлу. Дозволені формати: .txt, .dat, .csv");
     }
 
-    editDialog->setCarData(Car());
-    if (editDialog->exec() == QDialog::Accepted) {
-        Car newCar = editDialog->getCarData();
-        cars.append(newCar);
-        updateTable();
-
-        showStatusMessage("Автомобіль успішно додано: " + QString::fromStdString(newCar.brand));
-        QMessageBox::information(this, "Успіх",
-                                 QString("Автомобіль успішно додано!\n%1 - %2 - %3 - %4")
-                                     .arg(QString::fromStdString(newCar.brand))
-                                     .arg(QString::fromStdString(newCar.color))
-                                     .arg(newCar.price)
-                                     .arg(newCar.power));
+    QFileInfo fileInfo(filePath);
+    if (fileInfo.exists() && !fileInfo.isWritable()) {
+        throw std::runtime_error("Немає прав запису у файл: " + filePath.toStdString());
     }
 }
 
-void MainWindow::on_editButton_clicked()
-{
-    int currentRow = ui->tableWidget->currentRow();
-    if (currentRow < 0 || currentRow >= filteredCars.size()) {
-        showStatusMessage("Помилка: будь ласка, виберіть автомобіль для редагування", true);
-        return;
-    }
+void MainWindow::loadFromFile(const QString& filePath) {
+    try {
+        validateFileForReading(filePath);
 
-    // Знаходимо оригінальний індекс у головному масиві
-    Car selectedCar = filteredCars[currentRow];
-    int originalIndex = -1;
-    for (int i = 0; i < cars.size(); ++i) {
-        if (cars[i] == selectedCar) {
-            originalIndex = i;
-            break;
-        }
-    }
-
-    if (originalIndex == -1) {
-        showStatusMessage("Помилка: не вдалося знайти обраний автомобіль", true);
-        return;
-    }
-
-    if (!editDialog) {
-        editDialog = new EditDialog(this);
-    }
-
-    Car originalCar = cars[originalIndex];
-    editDialog->setCarData(originalCar);
-    if (editDialog->exec() == QDialog::Accepted) {
-        Car updatedCar = editDialog->getCarData();
-        cars[originalIndex] = updatedCar;
-        updateTable();
-
-        showStatusMessage("Автомобіль успішно оновлено: " + QString::fromStdString(updatedCar.brand));
-        QMessageBox::information(this, "Успіх",
-                                 QString("Автомобіль успішно оновлено!\nБуло: %1 - %2 - %3 - %4\nСтало: %5 - %6 - %7 - %8")
-                                     .arg(QString::fromStdString(originalCar.brand))
-                                     .arg(QString::fromStdString(originalCar.color))
-                                     .arg(originalCar.price)
-                                     .arg(originalCar.power)
-                                     .arg(QString::fromStdString(updatedCar.brand))
-                                     .arg(QString::fromStdString(updatedCar.color))
-                                     .arg(updatedCar.price)
-                                     .arg(updatedCar.power));
-    }
-}
-
-void MainWindow::on_deleteButton_clicked()
-{
-    int currentRow = ui->tableWidget->currentRow();
-    if (currentRow < 0 || currentRow >= filteredCars.size()) {
-        showStatusMessage("Помилка: будь ласка, виберіть автомобіль для видалення", true);
-        return;
-    }
-
-    Car carToDelete = filteredCars[currentRow];
-    int originalIndex = -1;
-    for (int i = 0; i < cars.size(); ++i) {
-        if (cars[i] == carToDelete) {
-            originalIndex = i;
-            break;
-        }
-    }
-
-    if (originalIndex == -1) {
-        showStatusMessage("Помилка: не вдалося знайти обраний автомобіль", true);
-        return;
-    }
-
-    QMessageBox::StandardButton reply = QMessageBox::question(this, "Підтвердження видалення",
-                                                              QString("Ви впевнені, що хочете видалити цей автомобіль?\n%1 - %2 - %3 - %4")
-                                                                  .arg(QString::fromStdString(carToDelete.brand))
-                                                                  .arg(QString::fromStdString(carToDelete.color))
-                                                                  .arg(carToDelete.price)
-                                                                  .arg(carToDelete.power),
-                                                              QMessageBox::Yes | QMessageBox::No);
-
-    if (reply == QMessageBox::Yes) {
-        cars.removeAt(originalIndex);
-        updateTable();
-        showStatusMessage("Автомобіль успішно видалено");
-        QMessageBox::information(this, "Успіх", "Автомобіль успішно видалено.");
-    }
-}
-
-void MainWindow::on_loadButton_clicked()
-{
-    QString filePath = QFileDialog::getOpenFileName(this,
-                                                    "Виберіть файл для завантаження",
-                                                    "",
-                                                    "Текстові файли (*.txt);;Файли даних (*.dat);;Всі файли (*)");
-
-    if (!filePath.isEmpty()) {
-        loadFromFile(filePath);
-    } else {
-        showStatusMessage("Завантаження скасовано");
-    }
-}
-
-void MainWindow::on_saveButton_clicked()
-{
-    if (cars.isEmpty()) {
-        showStatusMessage("Помилка: немає даних для збереження", true);
-        QMessageBox::warning(this, "Попередження", "Немає даних для збереження. Додайте автомобілі перед збереженням.");
-        return;
-    }
-
-    QString filePath = QFileDialog::getSaveFileName(this,
-                                                    "Зберегти дані",
-                                                    "",
-                                                    "Текстові файли (*.txt);;Файли даних (*.dat);;Всі файли (*)");
-
-    if (!filePath.isEmpty()) {
-        std::ofstream file(filePath.toStdString());
+        std::ifstream file(filePath.toStdString());
         if (!file.is_open()) {
-            showStatusMessage("Помилка: не вдалося створити файл", true);
-            QMessageBox::critical(this, "Помилка", "Не вдалося створити файл: " + filePath);
-            return;
+            throw std::runtime_error("Не вдалося відкрити файл для читання");
         }
 
-        for (const auto& car : cars) {
-            file << car;
+        cars.clear();
+        Car car;
+        int loadedCount = 0;
+        int lineNumber = 0;
+        std::string line;
+
+        while (std::getline(file, line)) {
+            lineNumber++;
+            if (line.empty()) continue;
+
+            try {
+                std::stringstream ss(line);
+                if (ss >> car) {
+                    cars.append(car);
+                    loadedCount++;
+                }
+            } catch (const std::exception& e) {
+                showStatusMessage(QString("Помилка у рядку %1: %2").arg(lineNumber).arg(e.what()), true);
+            }
         }
         file.close();
 
-        showStatusMessage("Дані успішно збережено у файл: " + filePath);
-        QMessageBox::information(this, "Успіх",
-                                 "Дані успішно збережено!\n" +
-                                     QString::number(cars.size()) + " автомобілів збережено у файл: " + filePath);
-    } else {
-        showStatusMessage("Збереження скасовано");
+        ui->searchText->clear();
+        updateTable();
+
+        if (loadedCount > 0) {
+            showStatusMessage("Успішно завантажено " + QString::number(loadedCount) + " автомобілів з файлу");
+            QMessageBox::information(this, "Успіх",
+                                     "Успішно завантажено " + QString::number(loadedCount) + " автомобілів з файлу.");
+        } else {
+            throw std::runtime_error("Не знайдено жодного коректного запису у файлі");
+        }
+    } catch (const std::exception& e) {
+        showStatusMessage("Помилка завантаження: " + QString(e.what()), true);
+        QMessageBox::critical(this, "Помилка завантаження",
+                              QString("Не вдалося завантажити файл:\n%1").arg(e.what()));
     }
 }
 
-void MainWindow::on_operationsButton_clicked()
-{
-    if (cars.isEmpty()) {
-        showStatusMessage("Помилка: немає даних для операцій", true);
-        QMessageBox::warning(this, "Попередження",
-                             "Немає даних для операцій. Додайте автомобілі або завантажте з файлу перед виконанням операцій.");
-        return;
-    }
+void MainWindow::on_addButton_clicked() {
+    try {
+        if (!editDialog) {
+            editDialog = new EditDialog(this);
+        }
 
-    if (!operationsWindow) {
-        operationsWindow = new OperationsWindow(this);
-        connect(operationsWindow, &OperationsWindow::carsSorted, this, [this](const QVector<Car>& sortedCars) {
-            this->cars = sortedCars;
+        editDialog->setCarData(Car());
+        if (editDialog->exec() == QDialog::Accepted) {
+            Car newCar = editDialog->getCarData();
+            cars.append(newCar);
             updateTable();
-            showStatusMessage("Таблицю успішно відсортовано");
-        });
-    }
 
-    operationsWindow->setCars(cars);
-    operationsWindow->exec();
+            showStatusMessage("Автомобіль успішно додано: " + QString::fromStdString(newCar.brand));
+            QMessageBox::information(this, "Успіх",
+                                     QString("Автомобіль успішно додано!\n%1 - %2 - %3 - %4")
+                                         .arg(QString::fromStdString(newCar.brand))
+                                         .arg(QString::fromStdString(newCar.color))
+                                         .arg(newCar.price)
+                                         .arg(newCar.power));
+        }
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, "Помилка додавання", QString("Помилка при додаванні авто: %1").arg(e.what()));
+    }
 }
 
-void MainWindow::on_tableWidget_itemDoubleClicked(QTableWidgetItem *item)
-{
+void MainWindow::on_editButton_clicked() {
+    try {
+        int currentRow = ui->tableWidget->currentRow();
+        if (currentRow < 0 || currentRow >= filteredCars.size()) {
+            throw std::runtime_error("Будь ласка, виберіть автомобіль для редагування");
+        }
+
+        // Знаходимо оригінальний індекс у головному масиві
+        Car selectedCar = filteredCars[currentRow];
+        int originalIndex = -1;
+        for (int i = 0; i < cars.size(); ++i) {
+            if (cars[i] == selectedCar) {
+                originalIndex = i;
+                break;
+            }
+        }
+
+        if (originalIndex == -1) {
+            throw std::runtime_error("Не вдалося знайти обраний автомобіль");
+        }
+
+        if (!editDialog) {
+            editDialog = new EditDialog(this);
+        }
+
+        Car originalCar = cars[originalIndex];
+        editDialog->setCarData(originalCar);
+        if (editDialog->exec() == QDialog::Accepted) {
+            Car updatedCar = editDialog->getCarData();
+            cars[originalIndex] = updatedCar;
+            updateTable();
+
+            showStatusMessage("Автомобіль успішно оновлено: " + QString::fromStdString(updatedCar.brand));
+            QMessageBox::information(this, "Успіх",
+                                     QString("Автомобіль успішно оновлено!\nБуло: %1 - %2 - %3 - %4\nСтало: %5 - %6 - %7 - %8")
+                                         .arg(QString::fromStdString(originalCar.brand))
+                                         .arg(QString::fromStdString(originalCar.color))
+                                         .arg(originalCar.price)
+                                         .arg(originalCar.power)
+                                         .arg(QString::fromStdString(updatedCar.brand))
+                                         .arg(QString::fromStdString(updatedCar.color))
+                                         .arg(updatedCar.price)
+                                         .arg(updatedCar.power));
+        }
+    } catch (const std::exception& e) {
+        showStatusMessage("Помилка редагування: " + QString(e.what()), true);
+        QMessageBox::critical(this, "Помилка редагування", e.what());
+    }
+}
+
+void MainWindow::on_deleteButton_clicked() {
+    try {
+        int currentRow = ui->tableWidget->currentRow();
+        if (currentRow < 0 || currentRow >= filteredCars.size()) {
+            throw std::runtime_error("Будь ласка, виберіть автомобіль для видалення");
+        }
+
+        Car carToDelete = filteredCars[currentRow];
+        int originalIndex = -1;
+        for (int i = 0; i < cars.size(); ++i) {
+            if (cars[i] == carToDelete) {
+                originalIndex = i;
+                break;
+            }
+        }
+
+        if (originalIndex == -1) {
+            throw std::runtime_error("Не вдалося знайти обраний автомобіль");
+        }
+
+        QMessageBox::StandardButton reply = QMessageBox::question(this, "Підтвердження видалення",
+                                                                  QString("Ви впевнені, що хочете видалити цей автомобіль?\n%1 - %2 - %3 - %4")
+                                                                      .arg(QString::fromStdString(carToDelete.brand))
+                                                                      .arg(QString::fromStdString(carToDelete.color))
+                                                                      .arg(carToDelete.price)
+                                                                      .arg(carToDelete.power),
+                                                                  QMessageBox::Yes | QMessageBox::No);
+
+        if (reply == QMessageBox::Yes) {
+            cars.removeAt(originalIndex);
+            updateTable();
+            showStatusMessage("Автомобіль успішно видалено");
+            QMessageBox::information(this, "Успіх", "Автомобіль успішно видалено.");
+        }
+    } catch (const std::exception& e) {
+        showStatusMessage("Помилка видалення: " + QString(e.what()), true);
+        QMessageBox::critical(this, "Помилка видалення", e.what());
+    }
+}
+
+void MainWindow::on_loadButton_clicked() {
+    try {
+        QString filePath = QFileDialog::getOpenFileName(this,
+                                                        "Виберіть файл для завантаження",
+                                                        "",
+                                                        "Текстові файли (*.txt);;Файли даних (*.dat);;CSV файли (*.csv);;Всі файли (*)");
+
+        if (!filePath.isEmpty()) {
+            loadFromFile(filePath);
+        } else {
+            showStatusMessage("Завантаження скасовано");
+        }
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, "Помилка", QString("Помилка вибору файлу: %1").arg(e.what()));
+    }
+}
+
+void MainWindow::on_saveButton_clicked() {
+    try {
+        if (cars.isEmpty()) {
+            throw std::runtime_error("Немає даних для збереження");
+        }
+
+        QString filePath = QFileDialog::getSaveFileName(this,
+                                                        "Зберегти дані",
+                                                        "",
+                                                        "Текстові файли (*.txt);;Файли даних (*.dat);;CSV файли (*.csv);;Всі файли (*)");
+
+        if (!filePath.isEmpty()) {
+            validateFileForWriting(filePath);
+
+            std::ofstream file(filePath.toStdString());
+            if (!file.is_open()) {
+                throw std::runtime_error("Не вдалося створити файл для запису");
+            }
+
+            int savedCount = 0;
+            for (const auto& car : cars) {
+                try {
+                    file << car;
+                    savedCount++;
+                } catch (const std::exception& e) {
+                    showStatusMessage("Помилка збереження автомобіля: " + QString(e.what()), true);
+                }
+            }
+            file.close();
+
+            if (savedCount > 0) {
+                showStatusMessage("Успішно збережено " + QString::number(savedCount) + " автомобілів у файл");
+                QMessageBox::information(this, "Успіх",
+                                         "Дані успішно збережено!\n" +
+                                             QString::number(savedCount) + " автомобілів збережено у файл: " + filePath);
+            } else {
+                throw std::runtime_error("Не вдалося зберегти жодного автомобіля");
+            }
+        } else {
+            showStatusMessage("Збереження скасовано");
+        }
+    } catch (const std::exception& e) {
+        showStatusMessage("Помилка збереження: " + QString(e.what()), true);
+        QMessageBox::critical(this, "Помилка збереження",
+                              QString("Не вдалося зберегти файл:\n%1").arg(e.what()));
+    }
+}
+
+void MainWindow::on_operationsButton_clicked() {
+    try {
+        if (cars.isEmpty()) {
+            throw std::runtime_error("Немає даних для операцій");
+        }
+
+        if (!operationsWindow) {
+            operationsWindow = new OperationsWindow(this);
+            connect(operationsWindow, &OperationsWindow::carsSorted, this, [this](const QVector<Car>& sortedCars) {
+                this->cars = sortedCars;
+                updateTable();
+                showStatusMessage("Таблицю успішно відсортовано");
+            });
+        }
+
+        operationsWindow->setCars(cars);
+        operationsWindow->exec();
+    } catch (const std::exception& e) {
+        showStatusMessage("Помилка операцій: " + QString(e.what()), true);
+        QMessageBox::critical(this, "Помилка операцій", e.what());
+    }
+}
+
+void MainWindow::on_tableWidget_itemDoubleClicked(QTableWidgetItem *item) {
     Q_UNUSED(item)
     on_editButton_clicked();
 }
 
-void MainWindow::on_searchText_textChanged(const QString &text)
-{
+void MainWindow::on_searchText_textChanged(const QString &text) {
     applyFilter(text);
 }

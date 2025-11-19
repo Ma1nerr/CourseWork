@@ -1,6 +1,7 @@
 #include "EditDialog.h"
 #include "ui_EditDialog.h"
 #include <QMessageBox>
+#include <stdexcept>
 
 EditDialog::EditDialog(QWidget *parent) :
     QDialog(parent),
@@ -32,45 +33,58 @@ Car EditDialog::getCarData() const
 
 void EditDialog::on_okButton_clicked()
 {
-    QString brand = ui->brandEdit->text().trimmed();
-    QString color = ui->colorEdit->text().trimmed();
-    bool priceOk, powerOk;
-    double price = ui->priceEdit->text().toDouble(&priceOk);
-    int power = ui->powerEdit->text().toInt(&powerOk);
+    try {
+        QString brand = ui->brandEdit->text().trimmed();
+        QString color = ui->colorEdit->text().trimmed();
 
-    // Валідація даних
-    if (brand.isEmpty()) {
-        QMessageBox::warning(this, "Помилка введення", "Будь ласка, введіть марку автомобіля.");
-        ui->brandEdit->setFocus();
-        return;
+        if (brand.isEmpty()) {
+            throw std::invalid_argument("Будь ласка, введіть марку автомобіля.");
+        }
+        if (color.isEmpty()) {
+            throw std::invalid_argument("Будь ласка, введіть колір автомобіля.");
+        }
+
+        // Перевірка числових значень з використанням try-catch
+        bool priceOk, powerOk;
+        double price = ui->priceEdit->text().toDouble(&priceOk);
+        int power = ui->powerEdit->text().toInt(&powerOk);
+
+        if (!priceOk) {
+            throw std::invalid_argument("Некоректний формат ціни. Введіть число.");
+        }
+        if (!powerOk) {
+            throw std::invalid_argument("Некоректний формат потужності. Введіть ціле число.");
+        }
+        if (price < 0) {
+            throw std::invalid_argument("Ціна не може бути від'ємною.");
+        }
+        if (power < 0) {
+            throw std::invalid_argument("Потужність не може бути від'ємною.");
+        }
+
+        currentCar.brand = brand.toStdString();
+        currentCar.color = color.toStdString();
+        currentCar.price = price;
+        currentCar.power = power;
+
+        // Валідація об'єкта Car
+        currentCar.validate();
+
+        accept();
+
+    } catch (const std::exception& e) {
+        QMessageBox::warning(this, "Помилка введення", e.what());
+
+        // Фокус на поле з помилкою
+        if (ui->brandEdit->text().trimmed().isEmpty()) {
+            ui->brandEdit->setFocus();
+        } else if (ui->colorEdit->text().trimmed().isEmpty()) {
+            ui->colorEdit->setFocus();
+        } else {
+            ui->priceEdit->setFocus();
+            ui->priceEdit->selectAll();
+        }
     }
-
-    if (color.isEmpty()) {
-        QMessageBox::warning(this, "Помилка введення", "Будь ласка, введіть колір автомобіля.");
-        ui->colorEdit->setFocus();
-        return;
-    }
-
-    if (!priceOk || price < 0) {
-        QMessageBox::warning(this, "Помилка введення", "Будь ласка, введіть коректну ціну (додатнє число).");
-        ui->priceEdit->setFocus();
-        ui->priceEdit->selectAll();
-        return;
-    }
-
-    if (!powerOk || power < 0) {
-        QMessageBox::warning(this, "Помилка введення", "Будь ласка, введіть коректну потужність (додатнє ціле число).");
-        ui->powerEdit->setFocus();
-        ui->powerEdit->selectAll();
-        return;
-    }
-
-    currentCar.brand = brand.toStdString();
-    currentCar.color = color.toStdString();
-    currentCar.price = price;
-    currentCar.power = power;
-
-    accept();
 }
 
 void EditDialog::on_cancelButton_clicked()
