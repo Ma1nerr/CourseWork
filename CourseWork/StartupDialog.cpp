@@ -2,6 +2,8 @@
 #include "ui_StartupDialog.h"
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QFileInfo>
+#include <stdexcept>
 
 StartupDialog::StartupDialog(QWidget *parent) :
     QDialog(parent),
@@ -26,15 +28,26 @@ void StartupDialog::on_createButton_clicked()
 
 void StartupDialog::on_loadButton_clicked()
 {
-    QString filePath = QFileDialog::getOpenFileName(this,
-                                                    "Виберіть файл для завантаження",
-                                                    "",
-                                                    "Текстові файли (*.txt);;Файли даних (*.dat);;Всі файли (*)");
+    try {
+        QString filePath = QFileDialog::getOpenFileName(this,
+                                                        "Виберіть файл для завантаження",
+                                                        "",
+                                                        "Текстові файли (*.txt);;Файли даних (*.dat);;CSV файли (*.csv);;Всі файли (*)");
 
-    if (!filePath.isEmpty()) {
-        selectedFilePath = filePath;
-        emit fileSelected(filePath);
-        accept();
+        if (!filePath.isEmpty()) {
+            QFileInfo fileInfo(filePath);
+            QString extension = fileInfo.suffix().toLower();
+
+            if (extension != "txt" && extension != "dat" && extension != "csv") {
+                throw std::invalid_argument("Непідтримуваний тип файлу. Оберіть файл з розширенням .txt, .dat або .csv");
+            }
+
+            selectedFilePath = filePath;
+            emit fileSelected(filePath);
+            accept();
+        }
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, "Помилка вибору файлу", e.what());
     }
 }
 

@@ -3,6 +3,7 @@
 #include <QMainWindow>
 #include <QVector>
 #include <QTableWidgetItem>
+#include <QFileInfo>
 #include "Car.h"
 
 QT_BEGIN_NAMESPACE
@@ -22,7 +23,6 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
-    // Зробити метод public, щоб можна було викликати з main.cpp
     void loadFromFile(const QString& filePath);
 
 private slots:
@@ -45,4 +45,9 @@ private:
     void updateTable();
     void applyFilter(const QString& filter);
     void showStatusMessage(const QString& message, bool isError = false);
+
+    // Нові методи для перевірки файлів
+    bool isValidFileExtension(const QString& filePath);
+    void validateFileForReading(const QString& filePath);
+    void validateFileForWriting(const QString& filePath);
 };

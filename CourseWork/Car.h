@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <iostream>
+#include <stdexcept>
 
 class Car {
 public:
@@ -9,12 +10,13 @@ public:
     double price;
     int power;
 
-    Car(); // default
+    Car();
     Car(const std::string& brand, const std::string& color, double price, int power);
-    Car(const Car& other); // copy ctor
+    Car(const Car& other);
     ~Car() = default;
 
-    // Оператори порівняння для QVector
+    void validate() const;
+
     bool operator==(const Car& other) const {
         return brand == other.brand && color == other.color &&
                price == other.price && power == other.power;
@@ -24,7 +26,6 @@ public:
         return !(*this == other);
     }
 
-    // file IO (declaration only)
     friend std::ostream& operator<<(std::ostream& out, const Car& c);
     friend std::istream& operator>>(std::istream& in, Car& c);
 };
